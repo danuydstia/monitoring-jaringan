@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Login - Network Monitoring{% endblock %}
+
+{% block content %}
+<style>
+    body {
+        background: color(white);
+    }
+    
+    .login-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+    }
+    
+    .login-card {
+        max-width: 440px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(20px);
+        border-radius: 24px;
+        padding: 3rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+        animation: slideUp 0.5s ease;
+    }
+    
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .login-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem;
+        box-shadow: 0 8px 24px rgba(0, 122, 255, 0.3);
+    }
+    
+    .login-icon i {
+        font-size: 2.5rem;
+        color: white;
+    }
+    
+    .login-title {
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.5px;
+        color: var(--apple-text);
+        margin-bottom: 0.5rem;
+        text-align: center;
+    }
+    
+    .login-subtitle {
+        color: var(--apple-text-secondary);
+        font-size: 0.938rem;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .form-floating {
+        margin-bottom: 1rem;
+    }
+    
+    .form-floating > .form-control {
+        height: 56px;
+        border-radius: 12px;
+        border: 1.5px solid var(--apple-border);
+        padding: 1rem 1rem;
+        font-size: 1rem;
+    }
+    
+    .form-floating > .form-control:focus {
+        border-color: var(--apple-blue);
+        box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+    }
+    
+    .form-floating > label {
+        padding: 1rem 1rem;
+        color: var(--apple-text-secondary);
+        font-size: 0.938rem;
+    }
+    
+    .btn-login {
+        width: 100%;
+        height: 52px;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: 12px;
+        background: var(--apple-blue);
+        border: none;
+        color: white;
+        margin-top: 1rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
+    }
+    
+    .btn-login:hover {
+        background: #0051D5;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 122, 255, 0.4);
+    }
+    
+    .btn-login:active {
+        transform: translateY(0);
+    }
+    
+    .demo-info {
+        margin-top: 2rem;
+        padding: 1.25rem;
+        background: var(--apple-gray);
+        border-radius: 12px;
+        font-size: 0.875rem;
+    }
+    
+    .demo-info strong {
+        color: var(--apple-text);
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.75rem;
+    }
+    
+    .demo-account {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        color: var(--apple-text-secondary);
+    }
+    
+    .demo-account .role {
+        font-weight: 500;
+        color: var(--apple-text);
+    }
+    
+    .demo-account .credentials {
+        font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+        font-size: 0.813rem;
+        color: var(--apple-text-secondary);
+    }
+</style>
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-icon">
+            <i class="bi bi-router"></i>
+        </div>
+        <h3 class="login-title">Network Monitor</h3>
+        <p class="login-subtitle">Silakan login untuk melanjutkan</p>
+        
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-floating">
+                <input type="text" class="form-control" id="username" name="username" placeholder="Username" required autocomplete="off">
+                <label for="username">Username</label>
+            </div>
+            <div class="form-floating">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Password" required autocomplete="current-password">
+                <label for="password">Password</label>
+            </div>
+            <button type="submit" class="btn btn-login">
+                <i class="bi bi-box-arrow-in-right me-2"></i> Login
+            </button>
+        </form>
+        
+        <div class="demo-info">
+            <strong><i class="bi bi-info-circle me-2"></i>Demo Akun</strong>
+            <div class="demo-account">
+                <span class="role">Admin</span>
+                <span class="credentials">admin / admin123</span>
+            </div>
+            <div class="demo-account">
+                <span class="role">Viewer</span>
+                <span class="credentials">viewer / viewer123</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

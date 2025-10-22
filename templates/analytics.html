@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Analytics - {{ device[1] }}{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Kembali
+    </a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+            <i class="bi bi-graph-up"></i> Analytics: {{ device[1] }} ({{ device[2] }})
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">{{ device[3] }}</p>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Uptime (24h)</h6>
+                <h2 class="text-success">{{ uptime_percentage }}%</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Avg Latency</h6>
+                <h2 class="text-info">{{ "%.2f"|format(stats[0] if stats and stats[0] else 0) }} ms</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Min Latency</h6>
+                <h2 class="text-success">{{ "%.2f"|format(stats[2] if stats and stats[2] else 0) }} ms</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Avg Packet Loss</h6>
+                <h2 class="text-danger">{{ "%.2f"|format(stats[1] if stats and stats[1] else 0) }}%</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if logs and logs|length > 0 %}
+<!-- Latency Chart -->
+<div class="card shadow mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-activity"></i> Latency (RTT) - Last 24 Hours</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="latencyChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- Packet Loss Chart -->
+<div class="card shadow mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Packet Loss - Last 24 Hours</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="packetLossChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- Uptime/Downtime Chart -->
+<div class="card shadow mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Status (Uptime/Downtime) - Last 24 Hours</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="statusChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- Combined Chart -->
+<div class="card shadow mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-bar-chart-line"></i> Combined Metrics Overview</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="combinedChart" height="100"></canvas>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> Tidak ada data monitoring dalam 24 jam terakhir. Silakan jalankan monitoring terlebih dahulu.
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% if logs and logs|length > 0 %}
+<script>
+// @ts-nocheck
+/* eslint-disable */
+(function() {
+    // Prepare data
+    const timestamps = {{ logs|map(attribute=0)|map('string')|list|tojson|safe }};
+    const latencyData = {{ logs|map(attribute=2)|list|tojson|safe }};
+    const packetLossData = {{ logs|map(attribute=3)|list|tojson|safe }};
+    const statusData = {{ logs|map(attribute=1)|list|tojson|safe }};
+
+    console.log('Timestamps:', timestamps);
+    console.log('Latency Data:', latencyData);
+    console.log('Packet Loss Data:', packetLossData);
+    console.log('Status Data:', statusData);
+
+    // Format timestamps
+    const formattedTimestamps = timestamps.map(ts => {
+        const date = new Date(ts);
+        return date.toLocaleString('id-ID', { 
+            day: '2-digit', 
+            month: 'short', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    });
+
+    // Convert status to binary (1 = online, 0 = offline)
+    const statusBinary = statusData.map(s => s === 'online' ? 1 : 0);
+
+    // Replace null values with 0 for charts
+    const cleanLatencyData = latencyData.map(v => v === null ? 0 : v);
+    const cleanPacketLossData = packetLossData.map(v => v === null ? 0 : v);
+
+    // Latency Chart
+    const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+    new Chart(latencyCtx, {
+        type: 'line',
+        data: {
+            labels: formattedTimestamps,
+            datasets: [{
+                label: 'Latency (ms)',
+                data: cleanLatencyData,
+                borderColor: 'rgb(54, 162, 235)',
+                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'Latency (ms)' }
+                }
+            }
+        }
+    });
+
+    // Packet Loss Chart
+    const packetLossCtx = document.getElementById('packetLossChart').getContext('2d');
+    new Chart(packetLossCtx, {
+        type: 'line',
+        data: {
+            labels: formattedTimestamps,
+            datasets: [{
+                label: 'Packet Loss (%)',
+                data: cleanPacketLossData,
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: { display: true, text: 'Packet Loss (%)' }
+                }
+            }
+        }
+    });
+
+    // Status Chart (Uptime/Downtime)
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    new Chart(statusCtx, {
+        type: 'bar',
+        data: {
+            labels: formattedTimestamps,
+            datasets: [{
+                label: 'Status (1=Online, 0=Offline)',
+                data: statusBinary,
+                backgroundColor: statusBinary.map(s => s === 1 ? 'rgba(75, 192, 192, 0.6)' : 'rgba(255, 99, 132, 0.6)'),
+                borderColor: statusBinary.map(s => s === 1 ? 'rgb(75, 192, 192)' : 'rgb(255, 99, 132)'),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 1,
+                    ticks: {
+                        stepSize: 1,
+                        callback: function(value) {
+                            return value === 1 ? 'Online' : 'Offline';
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Combined Chart
+    const combinedCtx = document.getElementById('combinedChart').getContext('2d');
+    new Chart(combinedCtx, {
+        type: 'line',
+        data: {
+            labels: formattedTimestamps,
+            datasets: [
+                {
+                    label: 'Latency (ms)',
+                    data: cleanLatencyData,
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4
+                },
+                {
+                    label: 'Packet Loss (%)',
+                    data: cleanPacketLossData,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4
+                },
+                {
+                    label: 'Status',
+                    data: statusBinary.map(s => s * 100),
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4,
+                    borderDash: [5, 5]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Latency (ms)' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: { display: true, text: 'Packet Loss (%) / Status' },
+                    grid: { drawOnChartArea: false },
+                    max: 100
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}
