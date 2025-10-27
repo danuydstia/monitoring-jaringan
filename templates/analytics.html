@@ -21,7 +21,7 @@
 
 <!-- Statistics Cards -->
 <div class="row mb-4">
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card text-center">
             <div class="card-body">
                 <h6 class="text-muted">Uptime (24h)</h6>
@@ -29,7 +29,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card text-center">
             <div class="card-body">
                 <h6 class="text-muted">Avg Latency</h6>
@@ -37,7 +37,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card text-center">
             <div class="card-body">
                 <h6 class="text-muted">Min Latency</h6>
@@ -45,11 +45,19 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Max Latency</h6>
+                <h2 class="text-danger">{{ "%.2f"|format(stats[3] if stats and stats[3] else 0) }} ms</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
         <div class="card text-center">
             <div class="card-body">
                 <h6 class="text-muted">Avg Packet Loss</h6>
-                <h2 class="text-danger">{{ "%.2f"|format(stats[1] if stats and stats[1] else 0) }}%</h2>
+                <h2 class="text-warning">{{ "%.2f"|format(stats[1] if stats and stats[1] else 0) }}%</h2>
             </div>
         </div>
     </div>

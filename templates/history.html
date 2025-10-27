@@ -8,10 +8,60 @@
     </a>
 </div>
 
-<div class="card shadow">
+<div class="card shadow mb-4">
     <div class="card-header bg-info text-white">
         <h5 class="mb-0">
             <i class="bi bi-clock-history"></i> History Monitoring: {{ device[1] }} ({{ device[2] }})
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">{{ device[3] }}</p>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+{% if stats %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Average Latency</h6>
+                <h3 class="text-info">{{ "%.2f"|format(stats.avg_latency) }} ms</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Minimum Latency</h6>
+                <h3 class="text-success">{{ "%.2f"|format(stats.min_latency) }} ms</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Maximum Latency</h6>
+                <h3 class="text-danger">{{ "%.2f"|format(stats.max_latency) }} ms</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="text-muted">Avg Packet Loss</h6>
+                <h3 class="text-warning">{{ "%.2f"|format(stats.avg_packet_loss) }}%</h3>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- History Table -->
+<div class="card shadow">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">
+            <i class="bi bi-list-ul"></i> Log History (100 terakhir)
         </h5>
     </div>
     <div class="card-body">
