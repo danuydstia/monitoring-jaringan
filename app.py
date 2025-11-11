@@ -7,11 +7,13 @@ import platform
 from datetime import datetime, timedelta
 import json
 import time
+import pytz
 import re
 import socket
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this'
+app.secret_key = 'rahasia-kantor-2025'
+AGENT_API_KEY = 'rahasia-kantor-2025'  # Harus sama dengan di agent.py
 
 # Konfigurasi MySQL
 app.config['MYSQL_HOST'] = 'localhost'
@@ -20,6 +22,13 @@ app.config['MYSQL_PASSWORD'] = ''
 app.config['MYSQL_DB'] = 'network_monitoring'
 
 mysql = MySQL(app)
+
+# ZONA WAKTU INDONESIA
+TIMEZONE_WIB = pytz.timezone('Asia/Jakarta')  # WIB (GMT+7)
+
+def get_current_time():
+    """Mendapatkan waktu sekarang dalam zona waktu Indonesia (WIB)"""
+    return datetime.now(TIMEZONE_WIB)
 
 # ========== DECORATOR FUNCTIONS ==========
 
@@ -45,66 +54,9 @@ def admin_required(f):
     return decorated_function
 
 # ========== HELPER FUNCTIONS - PING & NETWORK ==========
-@app.route('/check_device/<int:device_id>')
-@admin_required
-def check_device(device_id):
-    """Check single device"""
-    try:
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT * FROM devices WHERE id = %s", (device_id,))
-        device = cur.fetchone()
-        
-        if not device:
-            flash('Device tidak ditemukan', 'danger')
-            return redirect(url_for('dashboard'))
-        
-        device_name = device[1]
-        ip_address = device[2]
-        
-        print(f"\n{'='*60}")
-        print(f"Checking single device: {device_name} ({ip_address})")
-        print(f"{'='*60}")
-        
-        ping_result = ping_host_detailed(ip_address)
-        
-        status = ping_result['status']
-        latency = ping_result['latency']
-        packet_loss = ping_result['packet_loss']
-        response_time = ping_result['response_time']
-        
-        cur.execute("""
-            UPDATE devices 
-            SET status = %s, last_check = %s 
-            WHERE id = %s
-        """, (status, datetime.now(), device_id))
-        
-        cur.execute("""
-            INSERT INTO monitoring_logs (device_id, status, latency, packet_loss, response_time, checked_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (device_id, status, latency, packet_loss, response_time, datetime.now()))
-        
-        mysql.connection.commit()
-        cur.close()
-        
-        print(f"✓ Device checked: {status}")
-        print(f"{'='*60}\n")
-        
-
-        status_icon = "🟢" if status == 'online' else "🔴"
-        latency_text = f"{latency:.2f}ms" if latency and latency < 999 else "N/A"
-        flash(f'{status_icon} {device_name}: {status.upper()} | Latency: {latency_text}', 'success' if status == 'online' else 'warning')
-        
-    except Exception as e:
-        print(f"Error: {e}")
-        flash(f'Error checking device: {str(e)}', 'danger')
-    
-    return redirect(url_for('dashboard'))
 
 def test_connection(ip_address, timeout=3):
-    """
-    Test koneksi ke IP dengan berbagai metode
-    Return True jika bisa terconnect dengan cara apapun
-    """
+    """Test koneksi ke IP dengan berbagai metode"""
     param = '-n' if platform.system().lower() == 'windows' else '-c'
     command = ['ping', param, '1', '-w', str(timeout * 1000), ip_address]
     
@@ -116,47 +68,29 @@ def test_connection(ip_address, timeout=3):
     except:
         pass
     
-    # Method 2: TCP Connection test (untuk device yang block ICMP)
-    # Coba common ports: HTTP(80), HTTPS(443), SSH(22), Telnet(23)
+    # Method 2: TCP Connection test
     common_ports = [80, 443, 22, 23, 3389, 8080]
-    
     for port in common_ports:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
             result = sock.connect_ex((ip_address, port))
             sock.close()
-            
             if result == 0:
                 print(f"✓ {ip_address} reachable via TCP port {port}")
                 return True
         except:
             pass
     
-    # Method 3: DNS resolution check (untuk hostnames)
-    try:
-        socket.gethostbyname(ip_address)
-        print(f"✓ {ip_address} resolvable via DNS")
-        return True
-    except:
-        pass
-    
     print(f"✗ {ip_address} not reachable")
     return False
 
-
 def ping_host(ip_address):
-    """
-    Ping host sederhana - cek apakah device bisa terconnect
-    Return: True jika online (terconnect), False jika offline
-    """
+    """Ping host sederhana"""
     return test_connection(ip_address, timeout=3)
 
-
 def ping_host_detailed(ip_address):
-    """
-    Ping host dan return detail: status, latency, packet_loss, response_time
-    """
+    """Ping host dan return detail: status, latency, packet_loss, response_time"""
     result = {
         'status': 'offline',
         'latency': None,
@@ -175,17 +109,12 @@ def ping_host_detailed(ip_address):
         output_text = output.stdout
         duration_ms = round((end_time - start_time) * 1000, 2)
         result['response_time'] = duration_ms
-
-        print(f"\n=== Ping Output for {ip_address} ===")
-        print(output_text[:500])
-        print("="*50)
         
-        # Jika ping berhasil
         if output.returncode == 0:
             result['status'] = 'online'
             
             if platform.system().lower() == 'windows':
-                # STEP 1: Coba ambil Average dari statistics
+                # Parse latency
                 latency_patterns = [
                     r'[Aa]verage\s*=\s*(\d+(?:\.\d+)?)ms',
                     r'[Rr]ata-rata\s*=\s*(\d+(?:\.\d+)?)ms',
@@ -196,51 +125,29 @@ def ping_host_detailed(ip_address):
                     match = re.search(pattern, output_text)
                     if match:
                         avg_value = float(match.group(1))
-                        # Jika Average = 0, berarti semua reply < 1ms
                         if avg_value > 0:
                             result['latency'] = avg_value
                             latency_found = True
-                            print(f"Found latency from Average: {avg_value}ms")
                             break
                 
-                # STEP 2: Jika Average = 0 atau tidak ditemukan, parse individual times
                 if not latency_found or result['latency'] == 0:
-                    print("Parsing individual reply times...")
-                    
-                    # Pattern yang bisa handle: time=1ms, time<1ms, time=0ms
-                    time_patterns = [
-                        r'time=(\d+)ms',      # time=1ms, time=2ms
-                        r'time<(\d+)ms',      # time<1ms
-                    ]
-                    
+                    time_patterns = [r'time=(\d+)ms', r'time<(\d+)ms']
                     time_values = []
                     
-                    # Cari semua time values
                     for pattern in time_patterns:
                         matches = re.findall(pattern, output_text)
                         for match in matches:
                             time_val = float(match)
-                            
-                            # Jika pattern adalah time<Xms, gunakan nilai lebih kecil
                             if '<' in pattern:
-                                # time<1ms berarti sekitar 0.5ms
                                 time_val = time_val * 0.5
-                            
                             time_values.append(time_val)
                     
-                    print(f"Individual time values found: {time_values}")
-                    
                     if time_values:
-                        # Hitung average dari individual times
-                        avg = sum(time_values) / len(time_values)
-                        result['latency'] = round(avg, 2)
-                        print(f"Calculated latency from individual times: {result['latency']}ms")
+                        result['latency'] = round(sum(time_values) / len(time_values), 2)
                     else:
-                        # Tidak ada time values ditemukan, set default untuk koneksi sangat cepat
                         result['latency'] = 0.5
-                        print(f"No time values found, using default: 0.5ms")
                 
-                # STEP 3: Parsing Packet Loss
+                # Parse packet loss
                 loss_patterns = [
                     r'\((\d+(?:\.\d+)?)%\s*loss\)',
                     r'\((\d+(?:\.\d+)?)%\s*hilang\)',
@@ -260,17 +167,7 @@ def ping_host_detailed(ip_address):
                         break
                 
                 if not packet_loss_found:
-                    sent_match = re.search(r'Sent\s*=\s*(\d+)', output_text)
-                    received_match = re.search(r'Received\s*=\s*(\d+)', output_text)
-                    if sent_match and received_match:
-                        sent = int(sent_match.group(1))
-                        received = int(received_match.group(1))
-                        if sent > 0:
-                            result['packet_loss'] = round(((sent - received) / sent) * 100, 2)
-                        else:
-                            result['packet_loss'] = 0.0
-                    else:
-                        result['packet_loss'] = 0.0
+                    result['packet_loss'] = 0.0
             else:
                 # Linux/Mac
                 match = re.search(r'rtt min/avg/max/mdev = [\d.]+/([\d.]+)/', output_text)
@@ -282,25 +179,17 @@ def ping_host_detailed(ip_address):
                     result['packet_loss'] = float(loss_match.group(1))
                 else:
                     result['packet_loss'] = 0.0
-        
-        # Jika ping gagal, coba method lain
         else:
-            print(f"Ping failed, trying alternative connection methods...")
             if test_connection(ip_address, timeout=2):
                 result['status'] = 'online'
                 result['latency'] = 999
                 result['packet_loss'] = 0.0
                 result['response_time'] = duration_ms
-                print(f"✓ Device reachable via alternative method")
             else:
                 result['status'] = 'offline'
                 result['packet_loss'] = 100.0
-        
-        print(f"Final Result: status={result['status']}, latency={result['latency']}, "
-              f"packet_loss={result['packet_loss']}")
             
     except subprocess.TimeoutExpired:
-        print(f"Timeout, trying alternative methods...")
         if test_connection(ip_address, timeout=2):
             result['status'] = 'online'
             result['latency'] = 999
@@ -355,7 +244,6 @@ def login():
     
     return render_template('login.html')
 
-
 @app.route('/logout')
 def logout():
     session.clear()
@@ -392,19 +280,19 @@ def add_device():
             name = request.form.get('name', '').strip()
             ip_address = request.form.get('ip_address', '').strip()
             description = request.form.get('description', '').strip()
+            monitored_by = request.form.get('monitored_by', 'server')  # 'server' atau 'agent'
             
-            # Validasi input
             if not name or not ip_address:
                 flash('Nama dan IP Address harus diisi', 'warning')
                 return render_template('add_device.html')
             
-            # Validasi format IP (basic)
+            # Validasi format IP
             ip_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
             if not re.match(ip_pattern, ip_address):
                 flash('Format IP Address tidak valid. Gunakan format xxx.xxx.xxx.xxx', 'warning')
                 return render_template('add_device.html')
             
-            # Validasi range IP (0-255 per octet)
+            # Validasi range IP
             octets = ip_address.split('.')
             for octet in octets:
                 if int(octet) > 255:
@@ -421,28 +309,46 @@ def add_device():
                 flash(f'IP Address {ip_address} sudah terdaftar dengan nama "{existing[1]}"', 'warning')
                 return render_template('add_device.html')
             
-            # Test koneksi ke device
-            print(f"\n{'='*60}")
-            print(f"Testing connection to: {name} ({ip_address})")
-            print(f"{'='*60}")
+            # Jika monitored by agent
+            if monitored_by == 'agent':
+                if description:
+                    description = f"{description} [monitored_by_agent]"
+                else:
+                    description = "[monitored_by_agent]"
+                
+                status = 'offline'  # Default offline, agent akan update
+                
+                print(f"\n{'='*60}")
+                print(f"Adding device (Agent Mode): {name} ({ip_address})")
+                print(f"Status: Will be monitored by agent")
+                print(f"{'='*60}\n")
+            else:
+                # Mode server: test koneksi
+                print(f"\n{'='*60}")
+                print(f"Testing connection to: {name} ({ip_address})")
+                print(f"{'='*60}")
+                
+                is_online = ping_host(ip_address)
+                status = 'online' if is_online else 'offline'
+                
+                print(f"Result: {status.upper()}")
+                print(f"{'='*60}\n")
             
-            is_online = ping_host(ip_address)
-            status = 'online' if is_online else 'offline'
-            
-            print(f"Result: {status.upper()}")
-            print(f"{'='*60}\n")
-
             cur.execute("""
                 INSERT INTO devices (name, ip_address, description, status, last_check) 
                 VALUES (%s, %s, %s, %s, %s)
-            """, (name, ip_address, description, status, datetime.now()))
+            """, (name, ip_address, description, status, get_current_time()))
             
             mysql.connection.commit()
             device_id = cur.lastrowid
             cur.close()
             
-            status_icon = "🟢" if status == 'online' else "🔴"
-            flash(f'{status_icon} Device "{name}" berhasil ditambahkan dengan status {status.upper()}', 'success')
+            if monitored_by == 'agent':
+                flash(f'✅ Device "{name}" berhasil ditambahkan. Menunggu update dari agent...', 'success')
+            else:
+                status_icon = "🟢" if status == 'online' else "🔴"
+                flash(f'{status_icon} Device "{name}" berhasil ditambahkan dengan status {status.upper()}', 'success')
+            
             return redirect(url_for('dashboard'))
             
         except Exception as e:
@@ -459,7 +365,6 @@ def add_device():
             return render_template('add_device.html')
     
     return render_template('add_device.html')
-
 
 @app.route('/edit_device/<int:id>', methods=['GET', 'POST'])
 @admin_required
@@ -517,7 +422,6 @@ def edit_device(id):
     
     return render_template('edit_device.html', device=device)
 
-
 @app.route('/delete_device/<int:id>')
 @admin_required
 def delete_device(id):
@@ -536,6 +440,53 @@ def delete_device(id):
     return redirect(url_for('dashboard'))
 
 # ========== MONITORING ROUTES ==========
+
+@app.route('/check_device/<int:device_id>')
+@admin_required
+def check_device(device_id):
+    """Check single device"""
+    try:
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT * FROM devices WHERE id = %s", (device_id,))
+        device = cur.fetchone()
+        
+        if not device:
+            flash('Device tidak ditemukan', 'danger')
+            return redirect(url_for('dashboard'))
+        
+        device_name = device[1]
+        ip_address = device[2]
+        
+        ping_result = ping_host_detailed(ip_address)
+        
+        status = ping_result['status']
+        latency = ping_result['latency']
+        packet_loss = ping_result['packet_loss']
+        response_time = ping_result['response_time']
+        
+        cur.execute("""
+            UPDATE devices 
+            SET status = %s, last_check = %s 
+            WHERE id = %s
+        """, (status, get_current_time(), device_id))
+        
+        cur.execute("""
+            INSERT INTO monitoring_logs (device_id, status, latency, packet_loss, response_time, checked_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (device_id, status, latency, packet_loss, response_time, get_current_time()))
+        
+        mysql.connection.commit()
+        cur.close()
+        
+        status_icon = "🟢" if status == 'online' else "🔴"
+        latency_text = f"{latency:.2f}ms" if latency and latency < 999 else "N/A"
+        flash(f'{status_icon} {device_name}: {status.upper()} | Latency: {latency_text}', 'success' if status == 'online' else 'warning')
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        flash(f'Error checking device: {str(e)}', 'danger')
+    
+    return redirect(url_for('dashboard'))
 
 @app.route('/check_all')
 @admin_required
@@ -556,8 +507,6 @@ def check_all():
         device_name = device[1]
         ip_address = device[2]
         
-        print(f"Checking: {device_name} ({ip_address})")
-        
         ping_result = ping_host_detailed(ip_address)
         
         status = ping_result['status']
@@ -574,23 +523,18 @@ def check_all():
             UPDATE devices 
             SET status = %s, last_check = %s 
             WHERE id = %s
-        """, (status, datetime.now(), device_id))
+        """, (status, get_current_time(), device_id))
         
         cur.execute("""
             INSERT INTO monitoring_logs (device_id, status, latency, packet_loss, response_time, checked_at)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (device_id, status, latency, packet_loss, response_time, datetime.now()))
+        """, (device_id, status, latency, packet_loss, response_time, get_current_time()))
     
     mysql.connection.commit()
     cur.close()
     
-    print(f"\n{'='*60}")
-    print(f"✓ Completed: {online_count} online, {offline_count} offline")
-    print(f"{'='*60}\n")
-    
     flash(f'Semua device telah dicek: {online_count} online, {offline_count} offline', 'success')
     return redirect(url_for('dashboard'))
-
 
 @app.route('/history/<int:device_id>')
 @login_required
@@ -627,7 +571,6 @@ def history(device_id):
     cur.close()
     
     return render_template('history.html', device=device, logs=logs, stats=stats)
-
 
 @app.route('/analytics/<int:device_id>')
 @login_required
@@ -676,6 +619,25 @@ def analytics(device_id):
                          stats=stats,
                          uptime_percentage=uptime_percentage)
 
+# ========== AGENT DEVICES PAGE ==========
+
+@app.route('/agent_devices')
+@login_required
+def agent_devices():
+    """Halaman khusus untuk melihat devices dari agent"""
+    cur = mysql.connection.cursor()
+    
+    cur.execute("""
+        SELECT * FROM devices 
+        WHERE description LIKE '%agent%'
+        ORDER BY last_check DESC
+    """)
+    devices = cur.fetchall()
+    
+    cur.close()
+    
+    return render_template('agent_devices.html', devices=devices)
+
 # ========== API ROUTES ==========
 
 @app.route('/api/device_status/<int:device_id>')
@@ -694,7 +656,6 @@ def api_device_status(device_id):
         })
     return jsonify({'error': 'Device not found'}), 404
 
-
 @app.route('/api/check_device/<int:device_id>')
 @admin_required
 def api_check_device(device_id):
@@ -707,7 +668,6 @@ def api_check_device(device_id):
             return jsonify({'error': 'Device not found'}), 404
         
         ip_address = device[2]
-        
         ping_result = ping_host_detailed(ip_address)
         
         status = ping_result['status']
@@ -719,12 +679,12 @@ def api_check_device(device_id):
             UPDATE devices 
             SET status = %s, last_check = %s 
             WHERE id = %s
-        """, (status, datetime.now(), device_id))
+        """, (status, get_current_time(), device_id))
         
         cur.execute("""
             INSERT INTO monitoring_logs (device_id, status, latency, packet_loss, response_time, checked_at)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (device_id, status, latency, packet_loss, response_time, datetime.now()))
+        """, (device_id, status, latency, packet_loss, response_time, get_current_time()))
         
         mysql.connection.commit()
         cur.close()
@@ -736,23 +696,182 @@ def api_check_device(device_id):
             'latency': latency,
             'packet_loss': packet_loss,
             'response_time': response_time,
-            'last_check': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'last_check': get_current_time().strftime('%Y-%m-%d %H:%M:%S')
         })
         
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
-    
 
-    
+# ========== AGENT API ENDPOINTS ==========
+
+@app.route('/api/agent/test', methods=['GET'])
+def agent_test():
+    """Test endpoint untuk memastikan agent bisa connect"""
+    return jsonify({
+        'status': 'ok',
+        'message': 'Agent endpoint is working',
+        'server_time': get_current_time().isoformat()
+    }), 200
+
+@app.route('/api/agent/push_status', methods=['POST'])
+def agent_push_status():
+    """
+    Endpoint untuk menerima push status dari agent lokal
+    HYBRID MODE: Agent update status device yang sudah ada di database
+    """
+    try:
+        data = request.get_json()
+        
+        # Validasi API Key
+        api_key = data.get('api_key')
+        if api_key != AGENT_API_KEY:
+            return jsonify({'error': 'Invalid API Key'}), 401
+        
+        agent_name = data.get('agent_name', 'Unknown Agent')
+        timestamp = data.get('timestamp')
+        devices = data.get('devices', [])
+        
+        if not devices:
+            return jsonify({'error': 'No devices data'}), 400
+        
+        print(f"\n{'='*60}")
+        print(f"📡 Received data from agent: {agent_name}")
+        print(f"Time: {timestamp}")
+        print(f"Devices: {len(devices)}")
+        print(f"{'='*60}")
+        
+        cur = mysql.connection.cursor()
+        
+        updated_count = 0
+        created_count = 0
+        
+        for device_data in devices:
+            device_name = device_data.get('name')
+            ip_address = device_data.get('ip')
+            status = device_data.get('status', 'offline')
+            latency = device_data.get('latency')
+            
+            print(f"  {device_name} ({ip_address}): {status}")
+            
+            # Cek apakah device sudah ada di database (by IP)
+            cur.execute("SELECT id FROM devices WHERE ip_address = %s", (ip_address,))
+            existing = cur.fetchone()
+            
+            if existing:
+                # Update device yang sudah ada
+                device_id = existing[0]
+                
+                cur.execute("""
+                    UPDATE devices 
+                    SET status = %s, last_check = %s
+                    WHERE id = %s
+                """, (status, get_current_time(), device_id))
+                
+                updated_count += 1
+            else:
+                # Buat device baru jika belum ada (AUTO-ADD mode)
+                cur.execute("""
+                    INSERT INTO devices (name, ip_address, description, status, last_check) 
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (device_name, ip_address, f'Auto-added by agent: {agent_name}', status, get_current_time()))
+                
+                device_id = cur.lastrowid
+                created_count += 1
+            
+            # Simpan log monitoring
+            cur.execute("""
+                INSERT INTO monitoring_logs (device_id, status, latency, packet_loss, response_time, checked_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (device_id, status, latency, 0.0, None, get_current_time()))
+        
+        mysql.connection.commit()
+        cur.close()
+        
+        print(f"✓ Updated: {updated_count}, Created: {created_count}")
+        print(f"{'='*60}\n")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Status received from {agent_name}',
+            'devices_processed': len(devices),
+            'updated': updated_count,
+            'created': created_count
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error processing agent data: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/agent/register_device', methods=['POST'])
+def agent_register_device():
+    """
+    Endpoint untuk agent request daftar device yang harus dimonitor
+    Agent akan ambil list device dari server, lalu monitor sesuai list tersebut
+    """
+    try:
+        data = request.get_json()
+        
+        # Validasi API Key
+        api_key = data.get('api_key')
+        if api_key != AGENT_API_KEY:
+            return jsonify({'error': 'Invalid API Key'}), 401
+        
+        agent_name = data.get('agent_name', 'Unknown Agent')
+        
+        cur = mysql.connection.cursor()
+        
+        # Ambil devices yang ditandai untuk dimonitor oleh agent
+        cur.execute("""
+            SELECT id, name, ip_address, description 
+            FROM devices 
+            WHERE description LIKE '%agent%' OR description LIKE '%monitored_by_agent%'
+            ORDER BY id
+        """)
+        devices = cur.fetchall()
+        cur.close()
+        
+        device_list = []
+        for device in devices:
+            device_list.append({
+                'id': device[0],
+                'name': device[1],
+                'ip': device[2],
+                'description': device[3]
+            })
+        
+        print(f"📋 Agent '{agent_name}' requested device list: {len(device_list)} devices")
+        
+        return jsonify({
+            'success': True,
+            'agent_name': agent_name,
+            'devices': device_list,
+            'count': len(device_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ========== RUN APPLICATION ==========
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("🚀 Network Monitoring System")
+    print("🚀 Network Monitoring System - HYBRID MODE")
     print("="*60)
-    print("Connection Test: PING + TCP Ports + DNS")
+    print("✓ Server Mode: Direct ping from server")
+    print("✓ Agent Mode: Push status from local agents")
+    print("="*60)
+    print("Agent Endpoints:")
+    print("  - POST /api/agent/push_status")
+    print("  - POST /api/agent/register_device")
+    print("  - GET  /api/agent/test")
     print("="*60 + "\n")
     
     app.run(debug=True)
